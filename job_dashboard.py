@@ -306,7 +306,7 @@ def ask_gemini(question: str, df_in: pd.DataFrame) -> str:
         history=messages_to_history(st.session_state.gemini_messages),
     )
     response = chat.send_message(question)
-    return response.text
+    return response.text or "(Gemini returned an empty response.)"
 
 
 # ── Sidebar filters ───────────────────────────────────────────────────────────
