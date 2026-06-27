@@ -4,6 +4,8 @@ import gspread
 import pandas as pd
 import plotly.graph_objects as go
 from google.oauth2.service_account import Credentials
+from google import genai
+from google.genai import types
 from datetime import datetime, timedelta
 import numpy as np
 
@@ -252,6 +254,61 @@ st.markdown(
 )
 
 
+# ── Gemini chat helpers ───────────────────────────────────────────────────────
+GEMINI_MODEL = "gemini-3.5-flash"
+
+gemini_client = (
+    genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    if "GEMINI_API_KEY" in st.secrets
+    else None
+)
+
+
+def build_data_snapshot(df_in: pd.DataFrame) -> str:
+    """CSV snapshot of every application, for the Gemini system prompt."""
+    cols = [
+        "Company", "Location", "Position", "Date Applied",
+        "Response Date", "Days in Between", "Outcome", "Offer?",
+    ]
+    snap = df_in[cols].copy()
+    snap["Date Applied"] = snap["Date Applied"].dt.strftime("%Y-%m-%d")
+    snap["Response Date"] = snap["Response Date"].dt.strftime("%Y-%m-%d")
+    return snap.to_csv(index=False)
+
+
+def build_system_prompt(df_in: pd.DataFrame) -> str:
+    today = datetime.now().strftime("%B %d, %Y")
+    return (
+        "You are a helpful assistant answering questions about the user's "
+        "job search, based only on the application data below. "
+        f"Today's date is {today}.\n\n"
+        "A blank or 'Pending' Outcome combined with an empty Response Date "
+        "means the user has not heard back yet (i.e. they're waiting). "
+        "If a question can't be answered from this data, say so explicitly "
+        "instead of guessing.\n\n"
+        f"Application data (CSV):\n{build_data_snapshot(df_in)}"
+    )
+
+
+def messages_to_history(messages: list) -> list:
+    return [
+        {"role": m["role"], "parts": [{"text": m["text"]}]}
+        for m in messages
+    ]
+
+
+def ask_gemini(question: str, df_in: pd.DataFrame) -> str:
+    chat = gemini_client.chats.create(
+        model=GEMINI_MODEL,
+        config=types.GenerateContentConfig(
+            system_instruction=build_system_prompt(df_in)
+        ),
+        history=messages_to_history(st.session_state.gemini_messages),
+    )
+    response = chat.send_message(question)
+    return response.text
+
+
 # ── Sidebar filters ───────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## Filters")
@@ -280,6 +337,38 @@ with st.sidebar:
     if st.button("🔄 Refresh", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
+
+    st.markdown("---")
+    st.markdown("## 💬 Ask the Data")
+
+    if gemini_client is None:
+        st.caption("Add `GEMINI_API_KEY` to `.streamlit/secrets.toml` to enable chat.")
+    else:
+        if "gemini_messages" not in st.session_state:
+            st.session_state.gemini_messages = []
+
+        if st.button("Clear chat", use_container_width=True):
+            st.session_state.gemini_messages = []
+
+        for msg in st.session_state.gemini_messages:
+            role = "assistant" if msg["role"] == "model" else "user"
+            with st.chat_message(role):
+                st.markdown(msg["text"])
+
+        question = st.chat_input("Ask about your applications…")
+        if question:
+            st.session_state.gemini_messages.append({"role": "user", "text": question})
+            with st.chat_message("user"):
+                st.markdown(question)
+
+            try:
+                answer = ask_gemini(question, df)
+            except Exception as exc:
+                answer = f"Sorry, I couldn't reach Gemini: {exc}"
+
+            st.session_state.gemini_messages.append({"role": "model", "text": answer})
+            with st.chat_message("assistant"):
+                st.markdown(answer)
 
 
 # ── Apply filters ─────────────────────────────────────────────────────────────
