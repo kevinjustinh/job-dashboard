@@ -124,7 +124,7 @@ st.markdown(
 
 
 # ── Gemini chat helpers ───────────────────────────────────────────────────────
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-3.5-flash"
 
 gemini_client = (
     genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
