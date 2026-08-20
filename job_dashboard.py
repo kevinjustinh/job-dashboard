@@ -8,6 +8,8 @@ from google import genai
 from google.genai import types
 from datetime import datetime, timedelta
 import numpy as np
+import json
+import os
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 BG       = "#0F0F13"
@@ -255,7 +257,7 @@ st.markdown(
 
 
 # ── Gemini chat helpers ───────────────────────────────────────────────────────
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODEL = st.secrets["GEMINI_MODEL"] if "GEMINI_MODEL" in st.secrets else "gemini-3.7-flash"
 
 gemini_client = (
     genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
