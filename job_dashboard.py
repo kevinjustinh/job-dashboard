@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import json
 import os
+import time
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 BG       = "#0F0F13"
@@ -263,6 +264,8 @@ GEMINI_MODELS = (
     [st.secrets["GEMINI_MODEL"]] if "GEMINI_MODEL" in st.secrets else []
 ) + GEMINI_FALLBACK_MODELS
 GEMINI_RETRYABLE_CODES = {404, 429, 500, 503, 504}
+# Seconds to wait before each extra pass through the model list when all are busy.
+GEMINI_RETRY_DELAYS = [2, 5]
 
 gemini_client = (
     genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
@@ -310,15 +313,17 @@ def ask_gemini(question: str, df_in: pd.DataFrame) -> str:
     )
     history = messages_to_history(st.session_state.gemini_messages)
     last_error = None
-    for model in dict.fromkeys(GEMINI_MODELS):
-        try:
-            chat = gemini_client.chats.create(model=model, config=config, history=history)
-            response = chat.send_message(question)
-            return response.text or "(Gemini returned an empty response.)"
-        except errors.APIError as exc:
-            if exc.code not in GEMINI_RETRYABLE_CODES:
-                raise
-            last_error = exc
+    for delay in [0] + GEMINI_RETRY_DELAYS:
+        time.sleep(delay)
+        for model in dict.fromkeys(GEMINI_MODELS):
+            try:
+                chat = gemini_client.chats.create(model=model, config=config, history=history)
+                response = chat.send_message(question)
+                return response.text or "(Gemini returned an empty response.)"
+            except errors.APIError as exc:
+                if exc.code not in GEMINI_RETRYABLE_CODES:
+                    raise
+                last_error = exc
     raise last_error
 
 
