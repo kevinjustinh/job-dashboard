@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from google.oauth2.service_account import Credentials
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 from datetime import datetime, timedelta
 import numpy as np
 import json
@@ -257,7 +257,12 @@ st.markdown(
 
 
 # ── Gemini chat helpers ───────────────────────────────────────────────────────
-GEMINI_MODEL = st.secrets["GEMINI_MODEL"] if "GEMINI_MODEL" in st.secrets else "gemini-3.8-flash"
+# Tried in order; a model that's overloaded, down, or retired falls through to the next.
+GEMINI_FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"]
+GEMINI_MODELS = (
+    [st.secrets["GEMINI_MODEL"]] if "GEMINI_MODEL" in st.secrets else []
+) + GEMINI_FALLBACK_MODELS
+GEMINI_RETRYABLE_CODES = {404, 429, 500, 503, 504}
 
 gemini_client = (
     genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
@@ -300,15 +305,21 @@ def messages_to_history(messages: list) -> list:
 
 
 def ask_gemini(question: str, df_in: pd.DataFrame) -> str:
-    chat = gemini_client.chats.create(
-        model=GEMINI_MODEL,
-        config=types.GenerateContentConfig(
-            system_instruction=build_system_prompt(df_in)
-        ),
-        history=messages_to_history(st.session_state.gemini_messages),
+    config = types.GenerateContentConfig(
+        system_instruction=build_system_prompt(df_in)
     )
-    response = chat.send_message(question)
-    return response.text or "(Gemini returned an empty response.)"
+    history = messages_to_history(st.session_state.gemini_messages)
+    last_error = None
+    for model in dict.fromkeys(GEMINI_MODELS):
+        try:
+            chat = gemini_client.chats.create(model=model, config=config, history=history)
+            response = chat.send_message(question)
+            return response.text or "(Gemini returned an empty response.)"
+        except errors.APIError as exc:
+            if exc.code not in GEMINI_RETRYABLE_CODES:
+                raise
+            last_error = exc
+    raise last_error
 
 
 # ── Sidebar filters ───────────────────────────────────────────────────────────
@@ -365,8 +376,11 @@ with st.sidebar:
 
             try:
                 answer = ask_gemini(question, df)
-            except Exception as exc:
-                answer = f"Sorry, I couldn't reach Gemini: {exc}"
+            except Exception:
+                answer = (
+                    "Sorry, Gemini isn't responding right now. "
+                    "Please try again in a minute."
+                )
 
             st.session_state.gemini_messages.append({"role": "model", "text": answer})
             with st.chat_message("assistant"):
