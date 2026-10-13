@@ -257,7 +257,7 @@ st.markdown(
 
 
 # ── Gemini chat helpers ───────────────────────────────────────────────────────
-GEMINI_MODEL = st.secrets["GEMINI_MODEL"] if "GEMINI_MODEL" in st.secrets else "gemini-3.7-flash"
+GEMINI_MODEL = st.secrets["GEMINI_MODEL"] if "GEMINI_MODEL" in st.secrets else "gemini-3.8-flash"
 
 gemini_client = (
     genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
