@@ -259,7 +259,8 @@ st.markdown(
 
 # ── Gemini chat helpers ───────────────────────────────────────────────────────
 # Tried in order; a model that's overloaded, down, or retired falls through to the next.
-GEMINI_FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash"]
+# Flash-Lite leads: plenty for Q&A over the sheet, and far less often overloaded.
+GEMINI_FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.8-flash"]
 GEMINI_MODELS = (
     [st.secrets["GEMINI_MODEL"]] if "GEMINI_MODEL" in st.secrets else []
 ) + GEMINI_FALLBACK_MODELS
